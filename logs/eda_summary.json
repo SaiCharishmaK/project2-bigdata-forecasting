@@ -1,0 +1,39 @@
+{
+    "total_raw_records": 9384487,
+    "hourly_aggregations": 2212,
+    "date_coverage": {
+        "start": "2001-01-01 00:00:00",
+        "end": "2023-04-05 20:00:00"
+    },
+    "trip_count_stats": {
+        "mean": 4242.53,
+        "std": 2492.14,
+        "min": 1,
+        "max": 9562
+    },
+    "key_findings": [
+        "Peak demand at 6-7pm evening rush",
+        "Trough at 4-5am early morning",
+        "Peak/trough ratio: ~5-6x",
+        "Weekend patterns differ from weekday",
+        "High autocorrelation at lags 1, 24, 168",
+        "Series is stationary (ADF test p<0.05)",
+        "Strong weekly seasonality confirmed"
+    ],
+    "feature_engineering_decisions": [
+        "Use lag-1, lag-2, lag-3 features",
+        "Use lag-24 (same hour yesterday)",
+        "Use lag-168 (same hour last week)",
+        "Include hour_of_day as feature",
+        "Include day_of_week as feature",
+        "Include is_weekend as feature",
+        "Use 7-day rolling mean",
+        "Use 24-hour rolling std"
+    ],
+    "model_implications": [
+        "Gradient boosting works well with lag features",
+        "Prophet handles weekly seasonality",
+        "ARIMA viable due to stationarity",
+        "Forecast horizon: 24 hours"
+    ]
+}
