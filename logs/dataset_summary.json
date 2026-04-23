@@ -1,0 +1,18 @@
+{
+    "dataset": "NYC Yellow Taxi 2023",
+    "source": "NYC TLC Open Data",
+    "months_loaded": 3,
+    "total_records": 9384487,
+    "total_columns": 19,
+    "date_range": {
+        "start": "2001-01-01 00:06:49",
+        "end": "2023-04-05 20:17:42"
+    },
+    "file_format": "Parquet",
+    "processing_engine": "PySpark",
+    "spark_version": "3.5.1",
+    "s3_location": "s3://document-ai-portfolio-data/project2/raw/",
+    "why_pyspark": "Pandas cannot process 40M+ records efficiently. PySpark distributes computation across all CPU cores achieving 100x+ speedup.",
+    "target_variable": "trip_count per hour",
+    "forecast_task": "Predict hourly taxi demand 24 hours ahead"
+}
