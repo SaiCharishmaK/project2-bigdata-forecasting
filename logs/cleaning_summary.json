@@ -1,0 +1,27 @@
+{
+    "raw_records": 9384487,
+    "clean_records": 8794039,
+    "records_removed": 590448,
+    "retention_rate": 93.71,
+    "cleaning_rules": {
+        "date_filter": "Only 2023 data kept",
+        "fare_range": "> $0 and <= $500",
+        "distance_range": "> 0 and <= 100 miles",
+        "duration_range": "> 0 and <= 180 min",
+        "speed_limit": "<= 80 mph",
+        "passengers": "1 to 6"
+    },
+    "new_columns_added": [
+        "trip_duration_min",
+        "pickup_date",
+        "pickup_hour_of_day",
+        "pickup_day_of_week",
+        "pickup_month",
+        "is_weekend",
+        "speed_mph"
+    ],
+    "output_format": "Parquet partitioned by date",
+    "output_location": "data/processed/taxi_clean/",
+    "s3_location": "s3://document-ai-portfolio-data/project2/processed/",
+    "hourly_clean_hours": 2190
+}
