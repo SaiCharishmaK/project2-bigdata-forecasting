@@ -1,0 +1,67 @@
+{
+    "total_features": 31,
+    "total_rows": 1998,
+    "train_rows": 1398,
+    "val_rows": 300,
+    "test_rows": 300,
+    "split_ratios": "70/15/15",
+    "split_type": "Temporal \u2014 no random shuffle",
+    "target_variable": "target_trip_count_24h",
+    "forecast_horizon": "24 hours",
+    "feature_groups": {
+        "lag_features": [
+            "lag_1",
+            "lag_2",
+            "lag_3",
+            "lag_6",
+            "lag_12",
+            "lag_24",
+            "lag_48",
+            "lag_168"
+        ],
+        "rolling_features": [
+            "rolling_mean_3h",
+            "rolling_mean_6h",
+            "rolling_mean_12h",
+            "rolling_mean_24h",
+            "rolling_std_24h",
+            "rolling_mean_168h"
+        ],
+        "time_features": [
+            "hour_of_day",
+            "day_of_week",
+            "day_of_month",
+            "week_of_year",
+            "month",
+            "is_weekend",
+            "is_rush_hour",
+            "is_night",
+            "is_morning",
+            "is_afternoon",
+            "is_evening"
+        ],
+        "cyclical_features": [
+            "hour_sin",
+            "hour_cos",
+            "dow_sin",
+            "dow_cos",
+            "month_sin",
+            "month_cos"
+        ]
+    },
+    "top_features_by_correlation": {
+        "lag_168": 0.8618714578735764,
+        "rolling_mean_3h": 0.8494872040609978,
+        "lag_1": 0.8437785380923057,
+        "lag_24": 0.7627479255641075,
+        "lag_2": 0.7350077027232508
+    },
+    "key_decisions": [
+        "Lag-24 and lag-168 from autocorrelation",
+        "Cyclical encoding for hour/day/month",
+        "Temporal split prevents data leakage",
+        "lead(24) creates 24h forecast target",
+        "PySpark Window functions for scalability"
+    ],
+    "s3_location": "s3://document-ai-portfolio-data/project2/features/"
+}
