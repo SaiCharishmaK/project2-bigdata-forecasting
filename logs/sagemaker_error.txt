@@ -1,0 +1,27 @@
+ERROR: ClientError
+Message: An error occurred (AccessDeniedException) when calling the CreateTrainingJob operation: User: arn:aws:iam::004285426490:user/ml-portfolio-user is not authorized to perform: iam:PassRole on resource: arn:aws:iam::004285426490:role/SageMakerExecutionRole because no identity-based policy allows the iam:PassRole action
+
+Traceback (most recent call last):
+  File "C:\Users\saich\AppData\Local\Temp\ipykernel_31568\2324226817.py", line 95, in <module>
+    estimator.fit(
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\workflow\pipeline_context.py", line 346, in wrapper
+    return run_func(*args, **kwargs)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\estimator.py", line 1368, in fit
+    self.latest_training_job = _TrainingJob.start_new(self, inputs, experiment_config)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\estimator.py", line 2506, in start_new
+    estimator.sagemaker_session.train(**train_args)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\session.py", line 1055, in train
+    self._intercept_create_request(train_request, submit, self.train.__name__)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\session.py", line 6609, in _intercept_create_request
+    return create(request)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\session.py", line 1053, in submit
+    raise e
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\sagemaker\session.py", line 1044, in submit
+    self.sagemaker_client.create_training_job(**request)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\botocore\client.py", line 602, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\botocore\context.py", line 123, in wrapper
+    return func(*args, **kwargs)
+  File "c:\Users\saich\ml-portfolio\project2-bigdata-forecasting\venv\lib\site-packages\botocore\client.py", line 1078, in _make_api_call
+    raise error_class(parsed_response, operation_name)
+botocore.exceptions.ClientError: An error occurred (AccessDeniedException) when calling the CreateTrainingJob operation: User: arn:aws:iam::004285426490:user/ml-portfolio-user is not authorized to perform: iam:PassRole on resource: arn:aws:iam::004285426490:role/SageMakerExecutionRole because no identity-based policy allows the iam:PassRole action
