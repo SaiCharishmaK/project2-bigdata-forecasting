@@ -1,0 +1,36 @@
+{
+    "cloudwatch_namespace": "Project2/ForecastingEngine",
+    "sns_topic_arn": "arn:aws:sns:us-east-1:004285426490:project2-forecasting-alerts",
+    "alarms_created": [
+        "project2-high-latency",
+        "project2-high-errors",
+        "project2-prediction-drift",
+        "project2-no-traffic"
+    ],
+    "metrics_tracked": [
+        "APIResponseTime",
+        "RequestCount",
+        "ErrorCount",
+        "PredictedDemand",
+        "InferenceLatency",
+        "ModelLoadSuccess"
+    ],
+    "infrastructure_metrics": [
+        "CPU usage",
+        "Memory usage",
+        "Disk usage",
+        "Network I/O"
+    ],
+    "drift_detection": {
+        "method": "Distribution shift in PredictedDemand metric",
+        "threshold": "20% shift from training baseline",
+        "action": "Retrain model if drift detected"
+    },
+    "alert_channels": [
+        "email via SNS"
+    ],
+    "dashboard_name": "Project2-Forecasting",
+    "log_groups": [
+        "/project2/forecasting/api"
+    ]
+}
