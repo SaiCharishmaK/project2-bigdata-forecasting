@@ -1,0 +1,417 @@
+# .github/workflows/ml_pipeline.yml
+name: ML Pipeline CI/CD
+
+# Trigger on push to main branch
+# or pull requests to main
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+# Environment variables available
+# to all jobs
+env:
+  PYTHON_VERSION: "3.9"
+  AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+
+jobs:
+
+  # ── Job 1: Run Tests ──────────────────────────
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pandas numpy \
+            xgboost scikit-learn boto3 \
+            python-dotenv
+
+      - name: Run unit tests
+        run: |
+          pytest tests/test_pipeline.py \
+            -v --tb=short \
+            --ignore=tests/test_ec2_api.py
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: tests/
+
+  # ── Job 2: Validate Feature Data ─────────────
+  validate-data:
+    name: Validate Feature Data in S3
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install boto3 pandas python-dotenv
+
+      - name: Validate S3 data exists
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET_DATA: ${{ secrets.S3_BUCKET_DATA }}
+        run: |
+          python - << 'EOF'
+          import boto3
+          import os
+          import sys
+
+          s3 = boto3.client('s3')
+          bucket = os.getenv('S3_BUCKET_DATA')
+
+          required_files = [
+              'project2/features/train.csv',
+              'project2/features/val.csv',
+              'project2/features/test.csv',
+              'project2/features/feature_cols.json',
+          ]
+
+          missing = []
+          for key in required_files:
+              try:
+                  s3.head_object(
+                      Bucket=bucket, Key=key)
+                  print(f"✅ Found: {key}")
+              except Exception:
+                  missing.append(key)
+                  print(f"❌ Missing: {key}")
+
+          if missing:
+              print(f"\nMissing {len(missing)} files")
+              sys.exit(1)
+
+          print("\n✅ All required files in S3")
+          EOF
+
+  # ── Job 3: Retrain Model ──────────────────────
+  retrain:
+    name: Retrain Model
+    runs-on: ubuntu-latest
+    needs: [test, validate-data]
+    # Only retrain on push to main
+    # not on pull requests
+    if: github.event_name == 'push' &&
+        github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install boto3 pandas numpy \
+            xgboost scikit-learn \
+            python-dotenv joblib
+
+      - name: Download training data from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET_DATA: ${{ secrets.S3_BUCKET_DATA }}
+        run: |
+          python - << 'EOF'
+          import boto3
+          import os
+
+          s3     = boto3.client('s3')
+          bucket = os.getenv('S3_BUCKET_DATA')
+
+          os.makedirs('data/features', exist_ok=True)
+          os.makedirs('logs', exist_ok=True)
+
+          files = {
+              'project2/features/train.csv':
+                  'data/features/train.csv',
+              'project2/features/val.csv':
+                  'data/features/val.csv',
+              'project2/features/feature_cols.json':
+                  'data/features/feature_cols.json',
+          }
+
+          for s3_key, local_path in files.items():
+              s3.download_file(
+                  bucket, s3_key, local_path)
+              print(f"✅ Downloaded {s3_key}")
+          EOF
+
+      - name: Train XGBoost model
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET_DATA: ${{ secrets.S3_BUCKET_DATA }}
+        run: |
+          python - << 'EOF'
+          import pandas as pd
+          import numpy as np
+          import xgboost as xgb
+          import json
+          import boto3
+          import os
+          from sklearn.metrics import (
+              mean_absolute_error,
+              r2_score)
+
+          # Load data
+          df_train = pd.read_csv(
+              'data/features/train.csv')
+          df_val   = pd.read_csv(
+              'data/features/val.csv')
+
+          with open(
+              'data/features/feature_cols.json'
+          ) as f:
+              feature_cols = json.load(f)
+
+          TARGET = 'target_trip_count_24h'
+
+          X_train = df_train[feature_cols].fillna(0)
+          y_train = df_train[TARGET].fillna(0)
+          X_val   = df_val[feature_cols].fillna(0)
+          y_val   = df_val[TARGET].fillna(0)
+
+          print(f"Training on {len(X_train)} rows")
+          print(f"Features: {len(feature_cols)}")
+
+          # Train
+          model = xgb.XGBRegressor(
+              n_estimators=300,
+              max_depth=6,
+              learning_rate=0.05,
+              subsample=0.8,
+              colsample_bytree=0.8,
+              random_state=42,
+              n_jobs=-1,
+              early_stopping_rounds=30,
+              eval_metric='mae'
+          )
+
+          model.fit(
+              X_train, y_train,
+              eval_set=[(X_val, y_val)],
+              verbose=50
+          )
+
+          # Evaluate
+          val_pred = model.predict(X_val)
+          mae  = mean_absolute_error(
+              y_val, val_pred)
+          r2   = r2_score(y_val, val_pred)
+          mape = np.mean(
+              np.abs((y_val - val_pred) /
+                     (y_val + 1e-8)) * 100)
+
+          print(f"\n✅ Training complete")
+          print(f"   Val MAE:  {mae:.2f}")
+          print(f"   Val MAPE: {mape:.2f}%")
+          print(f"   Val R2:   {r2:.4f}")
+
+          # Performance gate
+          if mae > 500:
+              print(f"❌ MAE {mae:.2f} too high")
+              import sys; sys.exit(1)
+
+          # Save model
+          os.makedirs('models', exist_ok=True)
+          model_path = 'models/xgb_ci.json'
+          model.save_model(model_path)
+          print(f"✅ Model saved: {model_path}")
+
+          # Upload to S3
+          s3 = boto3.client('s3')
+          bucket = os.getenv('S3_BUCKET_DATA')
+
+          s3.upload_file(
+              model_path, bucket,
+              'project2/sagemaker/xgb_model.json')
+          print(f"✅ Model uploaded to S3")
+
+          # Save metrics
+          results = {
+              'ci_run':     True,
+              'val_mae':    round(mae, 4),
+              'val_mape':   round(mape, 4),
+              'val_r2':     round(r2, 4),
+              'n_features': len(feature_cols),
+              'best_iteration':
+                  int(model.best_iteration),
+          }
+
+          with open('logs/ci_results.json','w') as f:
+              json.dump(results, f, indent=4)
+
+          s3.upload_file(
+              'logs/ci_results.json',
+              bucket,
+              'project2/logs/ci_results.json')
+
+          print(json.dumps(results, indent=4))
+          EOF
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: trained-model
+          path: models/xgb_ci.json
+          retention-days: 30
+
+  # ── Job 4: Deploy to EC2 ──────────────────────
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: retrain
+    if: github.event_name == 'push' &&
+        github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy API to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          timeout:  120s
+          script: |
+            echo "Starting deployment..."
+
+            # Pull updated main.py from GitHub
+            cd ~/project2-api
+
+            # Update pip packages if needed
+            source venv/bin/activate
+            pip install fastapi uvicorn \
+              xgboost boto3 pydantic \
+              --quiet
+
+            # Download latest model from S3
+            python3 - << 'PYEOF'
+            import boto3, os
+            s3 = boto3.client(
+                's3',
+                region_name='us-east-1')
+            bucket = os.getenv(
+                'S3_BUCKET_DATA',
+                'document-ai-portfolio-data')
+            s3.download_file(
+                bucket,
+                'project2/sagemaker/xgb_model.json',
+                '/tmp/xgb_model.json')
+            print("✅ Model downloaded from S3")
+            PYEOF
+
+            # Restart API with new model
+            sudo supervisorctl restart \
+              forecasting-api
+
+            # Wait for startup
+            sleep 10
+
+            # Health check
+            STATUS=$(curl -s -o /dev/null \
+              -w "%{http_code}" \
+              http://localhost:8000/health)
+
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ API healthy after deploy"
+              echo "   Status: $STATUS"
+            else
+              echo "❌ API unhealthy: $STATUS"
+              sudo supervisorctl status
+              exit 1
+            fi
+
+            echo "✅ Deployment complete"
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying EC2 API..."
+          sleep 5
+
+          # Test from GitHub Actions runner
+          RESPONSE=$(curl -s -o /dev/null \
+            -w "%{http_code}" \
+            --connect-timeout 10 \
+            http://${{ secrets.EC2_HOST }}:8000/health)
+
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✅ API verified from GitHub runner"
+            echo "   HTTP Status: $RESPONSE"
+          else
+            echo "⚠️  API check returned: $RESPONSE"
+            echo "   May be security group restriction"
+          fi
+
+  # ── Job 5: Notify Results ─────────────────────
+  notify:
+    name: Notify Pipeline Result
+    runs-on: ubuntu-latest
+    needs: [test, validate-data, retrain, deploy]
+    if: always()
+
+    steps:
+      - name: Pipeline summary
+        run: |
+          echo "================================"
+          echo "  PIPELINE EXECUTION SUMMARY"
+          echo "================================"
+          echo "Tests:         ${{ needs.test.result }}"
+          echo "Data validate: ${{ needs.validate-data.result }}"
+          echo "Retrain:       ${{ needs.retrain.result }}"
+          echo "Deploy:        ${{ needs.deploy.result }}"
+          echo "================================"
+
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "✅ FULL PIPELINE SUCCEEDED"
+            echo "   Model retrained and deployed"
+          elif [ "${{ needs.test.result }}" = "failure" ]; then
+            echo "❌ PIPELINE FAILED at Tests"
+            echo "   Fix failing tests before deploy"
+          elif [ "${{ needs.retrain.result }}" = "failure" ]; then
+            echo "❌ PIPELINE FAILED at Retraining"
+            echo "   Check model performance gates"
+          elif [ "${{ needs.deploy.result }}" = "failure" ]; then
+            echo "❌ PIPELINE FAILED at Deploy"
+            echo "   Check EC2 SSH connection"
+          fi
